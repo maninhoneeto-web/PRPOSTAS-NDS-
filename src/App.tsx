@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -15,7 +15,10 @@ import {
   Calendar,
   FileText,
   TrendingUp,
-  Printer
+  Printer,
+  Download,
+  Upload,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -27,37 +30,97 @@ interface ProposalItem {
 }
 
 export default function App() {
-  const [clientName, setClientName] = useState('BENEDITO DA CUNHA MACHADO NETO');
-  const [clientAddress, setClientAddress] = useState('QNJ 31 1 CASA 01, TAGUATINGA NORTE, BRASÍLIA-DF');
-  const [companyName, setCompanyName] = useState('NDS CFTV');
-  const [companyTagline, setCompanyTagline] = useState('Digital');
-  const [companyPhone, setCompanyPhone] = useState('(61) 99830-8655');
-  const [companyEmail, setCompanyEmail] = useState('comercial@ndscftv.com.br');
-  const [companyCNPJ, setCompanyCNPJ] = useState('XX.XXX.XXX/XXXX-XX');
-  const [logoUrl, setLogoUrl] = useState('https://storage.googleapis.com/static-artifacts/NDS_LOGO_UP.png');
-  const [footerMessage, setFooterMessage] = useState('Qualidade e Segurança que seu Patrimônio Merece');
-  const [laborCost, setLaborCost] = useState(0);
+  // Funções de Persistência
+  const saveToLocalStorage = (key: string, value: any) => {
+    localStorage.setItem(`nds_proposal_${key}`, JSON.stringify(value));
+  };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const getFromLocalStorage = (key: string, defaultValue: any) => {
+    const saved = localStorage.getItem(`nds_proposal_${key}`);
+    return saved ? JSON.parse(saved) : defaultValue;
+  };
+
+  // Funções de Backup Externo (JSON)
+  const exportData = () => {
+    const data = {
+      clientName, clientAddress, companyName, companyTagline, companyPhone,
+      companyEmail, companySite, companyCNPJ, logoUrl, footerMessage, laborCost,
+      proposalStatus, clientTagline, validity, executionTime, warranty,
+      paymentTerms, signatureRole, items, markupPercent
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `proposta-nds-${clientName.replace(/\s+/g, '-').toLowerCase()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLogoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (confirm('Isso irá substituir todos os dados atuais pela proposta carregada. Prosseguir?')) {
+          setClientName(data.clientName || '');
+          setClientAddress(data.clientAddress || '');
+          setCompanyName(data.companyName || '');
+          setCompanyTagline(data.companyTagline || '');
+          setCompanyPhone(data.companyPhone || '');
+          setCompanyEmail(data.companyEmail || '');
+          setCompanySite(data.companySite || '');
+          setCompanyCNPJ(data.companyCNPJ || '');
+          setLogoUrl(data.logoUrl || '');
+          setFooterMessage(data.footerMessage || '');
+          setLaborCost(data.laborCost || 0);
+          setProposalStatus(data.proposalStatus || '');
+          setClientTagline(data.clientTagline || '');
+          setValidity(data.validity || '');
+          setExecutionTime(data.executionTime || '');
+          setWarranty(data.warranty || '');
+          setPaymentTerms(data.paymentTerms || '');
+          setSignatureRole(data.signatureRole || '');
+          setItems(data.items || []);
+          setMarkupPercent(data.markupPercent || 45);
+        }
+      } catch (err) {
+        alert('Erro ao ler o arquivo. Certifique-se que é um arquivo .json válido.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const clearAllItems = () => {
+    if (confirm('Deseja remover TODOS os itens da lista?')) {
+      setItems([]);
     }
   };
 
+  const [clientName, setClientName] = useState(() => getFromLocalStorage('clientName', 'BENEDITO DA CUNHA MACHADO NETO'));
+  const [clientAddress, setClientAddress] = useState(() => getFromLocalStorage('clientAddress', 'QNJ 31 1 CASA 01, TAGUATINGA NORTE, BRASÍLIA-DF'));
+  const [companyName, setCompanyName] = useState(() => getFromLocalStorage('companyName', 'NDS CFTV'));
+  const [companyTagline, setCompanyTagline] = useState(() => getFromLocalStorage('companyTagline', 'Digital'));
+  const [companyPhone, setCompanyPhone] = useState(() => getFromLocalStorage('companyPhone', '(61) 99830-8655'));
+  const [companyEmail, setCompanyEmail] = useState(() => getFromLocalStorage('companyEmail', 'comercial@ndscftv.com.br'));
+  const [companySite, setCompanySite] = useState(() => getFromLocalStorage('companySite', 'www.ndscftv.com.br'));
+  const [companyCNPJ, setCompanyCNPJ] = useState(() => getFromLocalStorage('companyCNPJ', 'XX.XXX.XXX/XXXX-XX'));
+  const [logoUrl, setLogoUrl] = useState(() => getFromLocalStorage('logoUrl', 'https://storage.googleapis.com/static-artifacts/NDS_LOGO_UP.png'));
+  const [footerMessage, setFooterMessage] = useState(() => getFromLocalStorage('footerMessage', 'Qualidade e Segurança que seu Patrimônio Merece'));
+  const [laborCost, setLaborCost] = useState(() => getFromLocalStorage('laborCost', 0));
+
   // Novos campos editáveis
-  const [proposalStatus, setProposalStatus] = useState('Comercial Profissional');
-  const [clientTagline, setClientTagline] = useState('Soluções de Monitoramento de Alta Performance');
-  const [validity, setValidity] = useState('07 dias corridos');
-  const [executionTime, setExecutionTime] = useState('Conforme cronograma acordado');
-  const [warranty, setWarranty] = useState('12 meses para equipamentos');
-  const [paymentTerms, setPaymentTerms] = useState('Depósito / PIX / Cartão (consulte taxas)');
-  const [signatureRole, setSignatureRole] = useState('Segurança Eletrônica Inteligente');
-  const [items, setItems] = useState<ProposalItem[]>([
+  const [proposalStatus, setProposalStatus] = useState(() => getFromLocalStorage('proposalStatus', 'Comercial Profissional'));
+  const [clientTagline, setClientTagline] = useState(() => getFromLocalStorage('clientTagline', 'Soluções de Monitoramento de Alta Performance'));
+  const [validity, setValidity] = useState(() => getFromLocalStorage('validity', '07 dias corridos'));
+  const [executionTime, setExecutionTime] = useState(() => getFromLocalStorage('executionTime', 'Conforme cronograma acordado'));
+  const [warranty, setWarranty] = useState(() => getFromLocalStorage('warranty', '12 meses para equipamentos'));
+  const [paymentTerms, setPaymentTerms] = useState(() => getFromLocalStorage('paymentTerms', 'Depósito / PIX / Cartão (consulte taxas)'));
+  const [signatureRole, setSignatureRole] = useState(() => getFromLocalStorage('signatureRole', 'Segurança Eletrônica Inteligente'));
+  const [items, setItems] = useState<ProposalItem[]>(() => getFromLocalStorage('items', [
     { id: '1', description: 'GRAVADOR DIG. DE VIDEO DVR MHDX 3116-C C/HD 4TB', quantity: 2, originalPrice: 2135.13 },
     { id: '2', description: 'CAMERA BULLET VHL 1220 B G9', quantity: 17, originalPrice: 93.25 },
     { id: '3', description: 'CABO COAXIAL 4MM C/ALI 75 CFTV (CX 100MT)', quantity: 10, originalPrice: 77.41 },
@@ -78,8 +141,55 @@ export default function App() {
     { id: '18', description: 'SWITCH NAO GERENCIAVEL POE 18 PORTAS', quantity: 2, originalPrice: 1021.70 },
     { id: '19', description: 'CAMERA IP VIPC 1230 B G2', quantity: 17, originalPrice: 225.71 },
     { id: '20', description: 'RJ 45 MACHO CAT 5E (PCT 50)', quantity: 1, originalPrice: 27.99 },
+  ]));
+  const [markupPercent, setMarkupPercent] = useState(() => getFromLocalStorage('markupPercent', 45));
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Efeitos de persistência
+  useEffect(() => {
+    saveToLocalStorage('clientName', clientName);
+    saveToLocalStorage('clientAddress', clientAddress);
+    saveToLocalStorage('companyName', companyName);
+    saveToLocalStorage('companyTagline', companyTagline);
+    saveToLocalStorage('companyPhone', companyPhone);
+    saveToLocalStorage('companyEmail', companyEmail);
+    saveToLocalStorage('companySite', companySite);
+    saveToLocalStorage('companyCNPJ', companyCNPJ);
+    saveToLocalStorage('logoUrl', logoUrl);
+    saveToLocalStorage('footerMessage', footerMessage);
+    saveToLocalStorage('laborCost', laborCost);
+    saveToLocalStorage('proposalStatus', proposalStatus);
+    saveToLocalStorage('clientTagline', clientTagline);
+    saveToLocalStorage('validity', validity);
+    saveToLocalStorage('executionTime', executionTime);
+    saveToLocalStorage('warranty', warranty);
+    saveToLocalStorage('paymentTerms', paymentTerms);
+    saveToLocalStorage('signatureRole', signatureRole);
+    saveToLocalStorage('items', items);
+    saveToLocalStorage('markupPercent', markupPercent);
+  }, [
+    clientName, clientAddress, companyName, companyTagline, companyPhone, 
+    companyEmail, companyCNPJ, logoUrl, footerMessage, laborCost, 
+    proposalStatus, clientTagline, validity, executionTime, warranty, 
+    paymentTerms, signatureRole, items, markupPercent
   ]);
-  const [markupPercent, setMarkupPercent] = useState(45);
+
+  const resetToDefault = () => {
+    if (confirm('Deseja realmente restaurar todos os campos para o padrão? Isso apagará seus dados atuais.')) {
+      localStorage.clear();
+      window.location.reload();
+    }
+  };
 
   const addItem = () => {
     setItems([
@@ -142,7 +252,39 @@ export default function App() {
               <h1 className="text-2xl font-black tracking-tighter text-slate-900 leading-none">{companyName}</h1>
               <p className="text-xs text-orange-600 font-black uppercase tracking-[0.2em] mt-1">{companyTagline}</p>
             </div>
+            <div className="ml-auto flex gap-2">
+              <button 
+                onClick={resetToDefault}
+                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                title="Restaurar Padrões originais"
+              >
+                <RotateCcw size={20} />
+              </button>
+            </div>
           </header>
+
+          {/* Backup Section */}
+          <section className="bg-orange-600 rounded-2xl p-4 text-white shadow-lg mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider mb-1">Segurança de Dados</h3>
+                <p className="text-[10px] opacity-80 uppercase font-bold">Salve sua proposta em um arquivo para não perder nunca</p>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={exportData}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold"
+                  title="Exportar para arquivo"
+                >
+                  <Download size={16} /> SALVAR BACKUP
+                </button>
+                <label className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold cursor-pointer">
+                  <Upload size={16} /> CARREGAR BACKUP
+                  <input type="file" accept=".json" onChange={importData} className="hidden" />
+                </label>
+              </div>
+            </div>
+          </section>
 
           <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-6 border-b border-slate-100 bg-slate-50/50">
@@ -208,6 +350,15 @@ export default function App() {
                     type="text" 
                     value={companyEmail}
                     onChange={(e) => setCompanyEmail(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Site / Website</label>
+                  <input 
+                    type="text" 
+                    value={companySite}
+                    onChange={(e) => setCompanySite(e.target.value)}
                     className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
@@ -317,12 +468,20 @@ export default function App() {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
                 <FileText size={16} /> Itens da Proposta
               </h2>
-              <button 
-                onClick={addItem}
-                className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 font-medium"
-              >
-                <Plus size={14} /> Adicionar Item
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={clearAllItems}
+                  className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 rounded-full hover:bg-red-100 font-bold border border-red-100 transition-colors"
+                >
+                  <Trash2 size={14} /> Limpar Lista
+                </button>
+                <button 
+                  onClick={addItem}
+                  className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 font-medium transition-colors"
+                >
+                  <Plus size={14} /> Adicionar Item
+                </button>
+              </div>
             </div>
             <div className="p-6 max-h-[400px] overflow-y-auto">
               <div className="space-y-4">
@@ -433,7 +592,8 @@ export default function App() {
                   <div className="text-[9px] space-y-0.5 text-slate-400 font-bold uppercase tracking-[0.1em]">
                     <p className="flex items-center gap-2 text-slate-600 font-bold"><Phone size={10} className="text-orange-500" /> {companyPhone}</p>
                     <p className="flex items-center gap-2"><Mail size={10} className="text-orange-500" /> {companyEmail.toUpperCase()}</p>
-                    <p className="flex items-center gap-2 font-bold opacity-60"><Building2 size={10} className="text-orange-500" /> CNPJ: {companyCNPJ}</p>
+                    <p className="flex items-center gap-2"><Building2 size={10} className="text-orange-500" /> {companySite.toLowerCase()}</p>
+                    <p className="flex items-center gap-2 font-bold opacity-60"><Shield size={10} className="text-orange-500" /> CNPJ: {companyCNPJ}</p>
                   </div>
                 </div>
               </div>
@@ -497,7 +657,7 @@ export default function App() {
                 </div>
                 <div className="h-[3px] bg-slate-900 mt-4 mb-2"></div>
                 <div className="flex justify-between items-center pt-3">
-                  <span className="text-sm font-black uppercase tracking-widest italic text-slate-900">Total Investimento Final</span>
+                  <span className="text-sm font-black uppercase tracking-widest italic text-slate-900">VALOR TOTAL DA PROPOSTA</span>
                   <span className="text-3xl font-black text-orange-600 tracking-tighter drop-shadow-sm">
                     {formatCurrency(totals.finalTotal)}
                   </span>
