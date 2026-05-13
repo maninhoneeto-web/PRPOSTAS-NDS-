@@ -1,0 +1,1 @@
+Este arquivo garante a existência da pasta public para o upload da sua logo.

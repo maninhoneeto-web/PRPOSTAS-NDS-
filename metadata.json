@@ -1,0 +1,8 @@
+{
+  "name": "NDS CFTV - Gerador de Propostas",
+  "description": "Ferramenta profissional para geração de propostas comerciais de segurança eletrônica com cálculo automático de aumento planejado.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
