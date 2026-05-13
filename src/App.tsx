@@ -576,7 +576,7 @@ export default function App() {
 
         {/* Live Preview (Document) */}
         <div className="print:m-0 print:p-0 print:block">
-          <div className="bg-white shadow-2xl rounded-sm p-4 md:p-12 min-h-[1056px] w-full border border-slate-100 print:shadow-none print:border-none sticky top-8">
+          <div className="bg-white shadow-2xl rounded-sm p-4 md:p-12 min-h-[1056px] w-full border border-slate-100 print:shadow-none print:border-none sticky top-8 print:static print-container">
             <header className="flex justify-between items-center mb-12 pb-10 border-b-2 border-slate-900/5">
               <div className="flex items-center gap-5">
                 <img 
@@ -665,7 +665,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="mt-auto border-t pt-10 border-slate-100 mb-8">
+            <div className="mt-auto border-t pt-10 border-slate-100 mb-8 no-break">
               <div className="grid grid-cols-2 gap-12">
                 <div className="space-y-4">
                   <h5 className="text-[10px] uppercase font-black text-slate-400 tracking-[0.2em] mb-2 italic">Condições Relevantes</h5>
@@ -684,7 +684,7 @@ export default function App() {
               </div>
             </div>
 
-            <footer className="text-center border-t border-slate-50 pt-8">
+            <footer className="text-center border-t border-slate-50 pt-8 no-break">
               <p className="text-[9px] uppercase font-bold tracking-[0.4em] text-slate-200 italic">
                 {footerMessage}
               </p>
@@ -695,14 +695,6 @@ export default function App() {
       </div>
 
       <style>{`
-        @media print {
-          body { background: white !important; padding: 0 !important; }
-          .max-w-7xl { max-width: 100% !important; margin: 0 !important; }
-          .print\\:hidden { display: none !important; }
-          .print\\:block { display: block !important; margin: 0 !important; }
-          .bg-white { box-shadow: none !important; border: none !important; }
-          .min-h-[1056px] { padding: 40px !important; }
-        }
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }

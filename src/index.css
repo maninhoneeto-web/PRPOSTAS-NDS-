@@ -1,1 +1,38 @@
 @import "tailwindcss";
+
+@layer base {
+  @media print {
+    body {
+      background: white !important;
+      -webkit-print-color-adjust: exact;
+    }
+    
+    /* Ensure the A4 container takes full width and doesn't have borders/shadows */
+    .print-container {
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 40px !important;
+      box-shadow: none !important;
+      border: none !important;
+      min-height: auto !important;
+      display: block !important;
+      background: white !important;
+    }
+
+    .max-w-7xl { 
+      max-width: 100% !important; 
+      margin: 0 !important; 
+    }
+
+    /* Avoid breaking inside these sections */
+    .no-break {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    /* Force new page before large sections if needed */
+    .page-break-before {
+      break-before: page;
+    }
+  }
+}
