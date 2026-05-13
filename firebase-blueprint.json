@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "Proposal": {
+      "title": "Proposal",
+      "description": "A saved proposal template with all fields.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "data": {
+          "type": "object",
+          "properties": {
+            "clientName": { "type": "string" },
+            "clientAddress": { "type": "string" },
+            "companyName": { "type": "string" },
+            "companyTagline": { "type": "string" },
+            "companyPhone": { "type": "string" },
+            "companyEmail": { "type": "string" },
+            "companySite": { "type": "string" },
+            "companyCNPJ": { "type": "string" },
+            "logoUrl": { "type": "string" },
+            "footerMessage": { "type": "string" },
+            "laborCost": { "type": "number" },
+            "laborDescription": { "type": "string" },
+            "proposalStatus": { "type": "string" },
+            "clientTagline": { "type": "string" },
+            "validity": { "type": "string" },
+            "executionTime": { "type": "string" },
+            "warranty": { "type": "string" },
+            "paymentTerms": { "type": "string" },
+            "signatureRole": { "type": "string" },
+            "items": { "type": "array" },
+            "markupPercent": { "type": "number" }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "data", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/proposals/{proposalId}": {
+      "schema": "Proposal",
+      "description": "User specific saved proposals"
+    }
+  }
+}

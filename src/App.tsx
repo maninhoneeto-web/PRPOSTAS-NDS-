@@ -18,9 +18,28 @@ import {
   Printer,
   Download,
   Upload,
-  RotateCcw
+  RotateCcw,
+  Cloud,
+  LogOut,
+  User,
+  Save,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { auth, db, googleProvider, signInWithPopup, signOut } from './firebase';
+import { 
+  collection, 
+  query, 
+  getDocs, 
+  setDoc, 
+  doc, 
+  deleteDoc, 
+  onSnapshot,
+  serverTimestamp,
+  orderBy,
+  getDocFromServer
+} from 'firebase/firestore';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
 interface ProposalItem {
   id: string;
@@ -30,6 +49,162 @@ interface ProposalItem {
 }
 
 export default function App() {
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [cloudProposals, setCloudProposals] = useState<any[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingCloud, setIsLoadingCloud] = useState(false);
+
+  // Firestore Error Handler
+  enum OperationType {
+    CREATE = 'create',
+    UPDATE = 'update',
+    DELETE = 'delete',
+    LIST = 'list',
+    GET = 'get',
+    WRITE = 'write',
+  }
+
+  const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+    const errInfo = {
+      error: error instanceof Error ? error.message : String(error),
+      authInfo: {
+        userId: auth.currentUser?.uid,
+        email: auth.currentUser?.email,
+        emailVerified: auth.currentUser?.emailVerified,
+      },
+      operationType,
+      path
+    };
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+  };
+
+  // Auth Effect
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch Cloud Proposals Effect
+  useEffect(() => {
+    if (!user) {
+      setCloudProposals([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, `users/${user.uid}/proposals`),
+      orderBy('updatedAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const proposals = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setCloudProposals(proposals);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/proposals`);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Test connection on boot
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        // Normal if 'test/connection' doesn't exist, but helps check early failures
+      }
+    };
+    testConnection();
+  }, []);
+
+  const login = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login failed", error);
+    }
+  };
+
+  const logout = () => signOut(auth);
+
+  const saveToCloud = async () => {
+    if (!user) {
+      alert("Por favor, faça login para salvar na nuvem.");
+      return;
+    }
+
+    const proposalName = prompt("Dê um nome para esta proposta:", `Proposta - ${clientName}`);
+    if (!proposalName) return;
+
+    setIsSaving(true);
+    const proposalId = 'p_' + Date.now();
+    const data = {
+      clientName, clientAddress, companyName, companyTagline, companyPhone,
+      companyEmail, companySite, companyCNPJ, logoUrl, footerMessage, laborCost, laborDescription,
+      proposalStatus, clientTagline, validity, executionTime, warranty,
+      paymentTerms, signatureRole, items, markupPercent
+    };
+
+    try {
+      await setDoc(doc(db, `users/${user.uid}/proposals`, proposalId), {
+        userId: user.uid,
+        name: proposalName,
+        data,
+        updatedAt: serverTimestamp()
+      });
+      alert("Proposta salva na nuvem com sucesso!");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/proposals/${proposalId}`);
+      alert("Erro ao salvar. Verifique o console.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const loadFromCloud = (proposalData: any) => {
+    if (confirm(`Carregar proposta "${proposalData.name}"? Isso substituirá os dados atuais.`)) {
+      const data = proposalData.data;
+      setClientName(data.clientName || '');
+      setClientAddress(data.clientAddress || '');
+      setCompanyName(data.companyName || '');
+      setCompanyTagline(data.companyTagline || '');
+      setCompanyPhone(data.companyPhone || '');
+      setCompanyEmail(data.companyEmail || '');
+      setCompanySite(data.companySite || '');
+      setCompanyCNPJ(data.companyCNPJ || '');
+      setLogoUrl(data.logoUrl || '');
+      setFooterMessage(data.footerMessage || '');
+      setLaborCost(data.laborCost || 0);
+      setLaborDescription(data.laborDescription || '');
+      setProposalStatus(data.proposalStatus || '');
+      setClientTagline(data.clientTagline || '');
+      setValidity(data.validity || '');
+      setExecutionTime(data.executionTime || '');
+      setWarranty(data.warranty || '');
+      setPaymentTerms(data.paymentTerms || '');
+      setSignatureRole(data.signatureRole || '');
+      setItems(data.items || []);
+      setMarkupPercent(data.markupPercent || 45);
+    }
+  };
+
+  const deleteFromCloud = async (proposalId: string) => {
+    if (!user) return;
+    if (confirm("Tem certeza que deseja excluir esta proposta da nuvem?")) {
+      try {
+        await deleteDoc(doc(db, `users/${user.uid}/proposals`, proposalId));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `users/${user.uid}/proposals/${proposalId}`);
+      }
+    }
+  };
+
   // Funções de Persistência
   const saveToLocalStorage = (key: string, value: any) => {
     localStorage.setItem(`nds_proposal_${key}`, JSON.stringify(value));
@@ -256,6 +431,28 @@ export default function App() {
               <p className="text-xs text-orange-600 font-black uppercase tracking-[0.2em] mt-1">{companyTagline}</p>
             </div>
             <div className="ml-auto flex gap-2">
+              {user ? (
+                <div className="flex items-center gap-3">
+                  <div className="hidden md:block text-right">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase leading-none">Conectado como</p>
+                    <p className="text-xs font-bold text-slate-900">{user.displayName || user.email}</p>
+                  </div>
+                  <button 
+                    onClick={logout}
+                    className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                    title="Sair"
+                  >
+                    <LogOut size={20} />
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={login}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-600 rounded-xl font-bold text-xs hover:bg-orange-100 transition-colors"
+                >
+                  <User size={16} /> ENTRAR / SALVAR NA NUVEM
+                </button>
+              )}
               <button 
                 onClick={resetToDefault}
                 className="p-2 text-slate-400 hover:text-red-500 transition-colors"
@@ -265,6 +462,63 @@ export default function App() {
               </button>
             </div>
           </header>
+
+          {/* Cloud Section */}
+          {user && (
+            <motion.section 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-2xl shadow-sm border border-orange-100 overflow-hidden mb-6"
+            >
+              <div className="p-4 bg-orange-50 border-b border-orange-100 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-orange-700 flex items-center gap-2">
+                  <Cloud size={16} /> Suas Propostas na Nuvem
+                </h3>
+                <button 
+                  onClick={saveToCloud}
+                  disabled={isSaving}
+                  className="px-3 py-1 bg-orange-600 text-white text-[10px] font-bold rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                  SALVAR ATUAL
+                </button>
+              </div>
+              <div className="p-2 max-h-[200px] overflow-y-auto">
+                {cloudProposals.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 text-center py-4 uppercase font-bold italic">Nenhuma proposta salva na nuvem ainda.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {cloudProposals.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg group transition-colors">
+                        <div className="flex-1 cursor-pointer" onClick={() => loadFromCloud(p)}>
+                          <p className="text-xs font-bold text-slate-700">{p.name}</p>
+                          <p className="text-[9px] text-slate-400 uppercase font-medium">
+                            Salvo em: {p.updatedAt?.toDate ? p.updatedAt.toDate().toLocaleString('pt-BR') : 'Recentemente'}
+                          </p>
+                        </div>
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={() => loadFromCloud(p)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                            title="Carregar"
+                          >
+                            <Download size={14} />
+                          </button>
+                          <button 
+                            onClick={() => deleteFromCloud(p.id)}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.section>
+          )}
 
           {/* Backup Section */}
           <section className="bg-orange-600 rounded-2xl p-4 text-white shadow-lg mb-6">
