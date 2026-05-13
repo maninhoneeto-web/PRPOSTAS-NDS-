@@ -125,9 +125,19 @@ export default function App() {
 
   const login = async () => {
     try {
+      setIsLoadingCloud(true);
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      if (error.code === 'auth/popup-blocked') {
+        alert("O login foi bloqueado pelo seu navegador (Pop-up). Por favor, autorize pop-ups para este site.");
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        // Just closed, no need for alert
+      } else {
+        alert(`Erro ao entrar: ${error.message}. Verifique se você está em uma aba anônima ou com bloqueadores de cookies.`);
+      }
+    } finally {
+      setIsLoadingCloud(false);
     }
   };
 
@@ -448,9 +458,11 @@ export default function App() {
               ) : (
                 <button 
                   onClick={login}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-600 rounded-xl font-bold text-xs hover:bg-orange-100 transition-colors"
+                  disabled={isLoadingCloud}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-600 rounded-xl font-bold text-xs hover:bg-orange-100 transition-colors disabled:opacity-50"
                 >
-                  <User size={16} /> ENTRAR / SALVAR NA NUVEM
+                  {isLoadingCloud ? <Loader2 size={16} className="animate-spin" /> : <User size={16} />} 
+                  {isLoadingCloud ? 'ENTRANDO...' : 'ENTRAR / SALVAR NA NUVEM'}
                 </button>
               )}
               <button 
