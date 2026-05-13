@@ -44,7 +44,7 @@ export default function App() {
   const exportData = () => {
     const data = {
       clientName, clientAddress, companyName, companyTagline, companyPhone,
-      companyEmail, companySite, companyCNPJ, logoUrl, footerMessage, laborCost,
+      companyEmail, companySite, companyCNPJ, logoUrl, footerMessage, laborCost, laborDescription,
       proposalStatus, clientTagline, validity, executionTime, warranty,
       paymentTerms, signatureRole, items, markupPercent
     };
@@ -77,6 +77,7 @@ export default function App() {
           setLogoUrl(data.logoUrl || '');
           setFooterMessage(data.footerMessage || '');
           setLaborCost(data.laborCost || 0);
+          setLaborDescription(data.laborDescription || 'Mão de obra especializada.');
           setProposalStatus(data.proposalStatus || '');
           setClientTagline(data.clientTagline || '');
           setValidity(data.validity || '');
@@ -111,6 +112,7 @@ export default function App() {
   const [logoUrl, setLogoUrl] = useState(() => getFromLocalStorage('logoUrl', 'https://storage.googleapis.com/static-artifacts/NDS_LOGO_UP.png'));
   const [footerMessage, setFooterMessage] = useState(() => getFromLocalStorage('footerMessage', 'Qualidade e Segurança que seu Patrimônio Merece'));
   const [laborCost, setLaborCost] = useState(() => getFromLocalStorage('laborCost', 0));
+  const [laborDescription, setLaborDescription] = useState(() => getFromLocalStorage('laborDescription', 'Mão de obra especializada para instalação e configuração do sistema.'));
 
   // Novos campos editáveis
   const [proposalStatus, setProposalStatus] = useState(() => getFromLocalStorage('proposalStatus', 'Comercial Profissional'));
@@ -168,6 +170,7 @@ export default function App() {
     saveToLocalStorage('logoUrl', logoUrl);
     saveToLocalStorage('footerMessage', footerMessage);
     saveToLocalStorage('laborCost', laborCost);
+    saveToLocalStorage('laborDescription', laborDescription);
     saveToLocalStorage('proposalStatus', proposalStatus);
     saveToLocalStorage('clientTagline', clientTagline);
     saveToLocalStorage('validity', validity);
@@ -179,7 +182,7 @@ export default function App() {
     saveToLocalStorage('markupPercent', markupPercent);
   }, [
     clientName, clientAddress, companyName, companyTagline, companyPhone, 
-    companyEmail, companyCNPJ, logoUrl, footerMessage, laborCost, 
+    companyEmail, companyCNPJ, logoUrl, footerMessage, laborCost, laborDescription,
     proposalStatus, clientTagline, validity, executionTime, warranty, 
     paymentTerms, signatureRole, items, markupPercent
   ]);
@@ -450,6 +453,16 @@ export default function App() {
                     className="w-full px-4 py-2 bg-blue-50 border border-blue-200 font-bold text-blue-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <div className="col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase text-blue-600">Descrição da Mão de Obra</label>
+                  <textarea 
+                    value={laborDescription}
+                    onChange={(e) => setLaborDescription(e.target.value)}
+                    rows={2}
+                    placeholder="Descreva o serviço de mão de obra..."
+                    className="w-full px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-400 uppercase">Endereço</label>
@@ -651,9 +664,14 @@ export default function App() {
                   <span>Equipamentos</span>
                   <span className="font-mono text-slate-600">{formatCurrency(totals.materialsAdjusted)}</span>
                 </div>
-                <div className="flex justify-between items-center text-[10px] uppercase font-black text-orange-600 tracking-wider bg-orange-50 px-3 py-2 rounded-lg border border-orange-100">
-                  <span>Mão de Obra e Instalação</span>
-                  <span className="font-mono text-lg">{formatCurrency(totals.laborCost)}</span>
+                <div className="flex flex-col text-right text-[10px] uppercase font-black text-orange-600 tracking-wider bg-orange-50 px-3 py-2 rounded-lg border border-orange-100">
+                  <div className="flex justify-between items-center mb-1">
+                    <span>Mão de Obra e Instalação</span>
+                    <span className="font-mono text-lg">{formatCurrency(totals.laborCost)}</span>
+                  </div>
+                  <div className="text-[8px] opacity-60 normal-case font-medium">
+                    {laborDescription}
+                  </div>
                 </div>
                 <div className="h-[3px] bg-slate-900 mt-4 mb-2"></div>
                 <div className="flex justify-between items-center pt-3">
