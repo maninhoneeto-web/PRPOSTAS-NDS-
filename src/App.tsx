@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, ChangeEvent } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -23,7 +23,12 @@ import {
   LogOut,
   User,
   Save,
-  Loader2
+  Loader2,
+  Camera,
+  Wrench,
+  CheckSquare,
+  Check,
+  Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db, googleProvider, signInWithPopup, signOut } from './firebase';
@@ -41,12 +46,46 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
+const compressImage = (base64Str: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const MAX_WIDTH = 320;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > MAX_WIDTH) {
+        height = Math.round((height * MAX_WIDTH) / width);
+        width = MAX_WIDTH;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      } else {
+        resolve(base64Str);
+      }
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+  });
+};
+
 interface ProposalItem {
   id: string;
   description: string;
   quantity: number;
   originalPrice: number;
+  imageUrl?: string;
 }
+
+
 
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -158,7 +197,8 @@ export default function App() {
       clientName, clientAddress, companyName, companyTagline, companyPhone,
       companyEmail, companySite, companyCNPJ, logoUrl, footerMessage, laborCost, laborDescription,
       proposalStatus, clientTagline, validity, executionTime, warranty,
-      paymentTerms, signatureRole, items, markupPercent
+      paymentTerms, signatureRole, items, markupPercent,
+      laborDays
     };
 
     try {
@@ -201,6 +241,7 @@ export default function App() {
       setSignatureRole(data.signatureRole || '');
       setItems(data.items || []);
       setMarkupPercent(data.markupPercent || 45);
+      setLaborDays(data.laborDays || '2 dias');
     }
   };
 
@@ -231,7 +272,8 @@ export default function App() {
       clientName, clientAddress, companyName, companyTagline, companyPhone,
       companyEmail, companySite, companyCNPJ, logoUrl, footerMessage, laborCost, laborDescription,
       proposalStatus, clientTagline, validity, executionTime, warranty,
-      paymentTerms, signatureRole, items, markupPercent
+      paymentTerms, signatureRole, items, markupPercent,
+      laborDays
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -272,6 +314,7 @@ export default function App() {
           setSignatureRole(data.signatureRole || '');
           setItems(data.items || []);
           setMarkupPercent(data.markupPercent || 45);
+          setLaborDays(data.laborDays || '2 dias');
         }
       } catch (err) {
         alert('Erro ao ler o arquivo. Certifique-se que é um arquivo .json válido.');
@@ -298,6 +341,10 @@ export default function App() {
   const [footerMessage, setFooterMessage] = useState(() => getFromLocalStorage('footerMessage', 'Qualidade e Segurança que seu Patrimônio Merece'));
   const [laborCost, setLaborCost] = useState(() => getFromLocalStorage('laborCost', 0));
   const [laborDescription, setLaborDescription] = useState(() => getFromLocalStorage('laborDescription', 'Mão de obra especializada para instalação e configuração do sistema.'));
+  
+  // Custom states matching requested labor tabs
+  const [activeTab, setActiveTab] = useState<'empresa' | 'cliente_itens' | 'mao_obra'>('empresa');
+  const [laborDays, setLaborDays] = useState<string>(() => getFromLocalStorage('laborDays', '2 dias'));
 
   // Novos campos editáveis
   const [proposalStatus, setProposalStatus] = useState(() => getFromLocalStorage('proposalStatus', 'Comercial Profissional'));
@@ -365,11 +412,13 @@ export default function App() {
     saveToLocalStorage('signatureRole', signatureRole);
     saveToLocalStorage('items', items);
     saveToLocalStorage('markupPercent', markupPercent);
+    saveToLocalStorage('laborDays', laborDays);
   }, [
     clientName, clientAddress, companyName, companyTagline, companyPhone, 
     companyEmail, companyCNPJ, logoUrl, footerMessage, laborCost, laborDescription,
     proposalStatus, clientTagline, validity, executionTime, warranty, 
-    paymentTerms, signatureRole, items, markupPercent
+    paymentTerms, signatureRole, items, markupPercent,
+    laborDays
   ]);
 
   const resetToDefault = () => {
@@ -390,7 +439,7 @@ export default function App() {
     setItems(items.filter(item => item.id !== id));
   };
 
-  const updateItem = (id: string, field: keyof ProposalItem, value: string | number) => {
+  const updateItem = (id: string, field: keyof ProposalItem, value: any) => {
     setItems(items.map(item => {
       if (item.id === id) {
         return { ...item, [field]: value };
@@ -555,265 +604,439 @@ export default function App() {
             </div>
           </section>
 
-          <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <Building2 size={16} /> Dados da Empresa (Cabeçalho)
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="col-span-2 space-y-2">
-                  <label className="text-xs font-bold text-orange-600 uppercase flex items-center gap-2">
-                    <Plus size={14} /> Sua Logo (Upload ou URL)
-                  </label>
-                  <div className="flex flex-col md:flex-row gap-2">
-                    <label className="flex-1 cursor-pointer bg-orange-50 border-2 border-dashed border-orange-200 hover:border-orange-400 p-2 rounded-lg text-center transition-all">
-                      <span className="text-[10px] font-bold text-orange-600 uppercase">Selecionar Imagem</span>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        onChange={handleLogoUpload}
-                        className="hidden" 
-                      />
-                    </label>
-                    <input 
-                      type="text" 
-                      value={logoUrl}
-                      onChange={(e) => setLogoUrl(e.target.value)}
-                      placeholder="Ou cole o link da imagem aqui"
-                      className="flex-[2] px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-xs"
-                    />
+          {/* Elegant and highly visible configuration Tabs */}
+          <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap md:flex-nowrap gap-1 mb-6">
+            <button
+              onClick={() => setActiveTab('empresa')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                activeTab === 'empresa' 
+                  ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              }`}
+            >
+              <Building2 size={14} /> Empresa
+            </button>
+            <button
+              onClick={() => setActiveTab('cliente_itens')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                activeTab === 'cliente_itens' 
+                  ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              }`}
+            >
+              <User size={14} /> Cliente & Itens
+            </button>
+            <button
+              onClick={() => setActiveTab('mao_obra')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                activeTab === 'mao_obra' 
+                  ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              }`}
+            >
+              <Wrench size={14} /> Mão de Obra
+            </button>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {activeTab === 'empresa' && (
+              <motion.div
+                key="empresa"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.15 }}
+                className="space-y-6"
+              >
+                {/* Dados da Empresa */}
+                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                      <Building2 size={16} /> Dados da Empresa (Cabeçalho)
+                    </h2>
                   </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Nome da Empresa</label>
-                  <input 
-                    type="text" 
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Subtítulo (Ex: Digital)</label>
-                  <input 
-                    type="text" 
-                    value={companyTagline}
-                    onChange={(e) => setCompanyTagline(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Telefone de Contato</label>
-                  <input 
-                    type="text" 
-                    value={companyPhone}
-                    onChange={(e) => setCompanyPhone(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">E-mail Comercial</label>
-                  <input 
-                    type="text" 
-                    value={companyEmail}
-                    onChange={(e) => setCompanyEmail(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Site / Website</label>
-                  <input 
-                    type="text" 
-                    value={companySite}
-                    onChange={(e) => setCompanySite(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-                <div className="col-span-2 md:col-span-1 space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">CNPJ / Identificação</label>
-                  <input 
-                    type="text" 
-                    value={companyCNPJ}
-                    onChange={(e) => setCompanyCNPJ(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-                <div className="col-span-2 md:col-span-1 space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Mensagem do Rodapé</label>
-                  <input 
-                    type="text" 
-                    value={footerMessage}
-                    onChange={(e) => setFooterMessage(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <FileText size={16} /> Termos & Condições
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Status do Documento</label>
-                  <input type="text" value={proposalStatus} onChange={(e) => setProposalStatus(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Resumo Cliente (Destaque)</label>
-                  <input type="text" value={clientTagline} onChange={(e) => setClientTagline(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Validade</label>
-                  <input type="text" value={validity} onChange={(e) => setValidity(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Prazo de Execução</label>
-                  <input type="text" value={executionTime} onChange={(e) => setExecutionTime(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Garantia</label>
-                  <input type="text" value={warranty} onChange={(e) => setWarranty(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Cargo na Assinatura</label>
-                  <input type="text" value={signatureRole} onChange={(e) => setSignatureRole(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
-                </div>
-                <div className="col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Formas de Pagamento</label>
-                  <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <Building2 size={16} /> Dados do Cliente & Serviços
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Nome / Empresa</label>
-                  <input 
-                    type="text" 
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase text-blue-600">Mão de Obra (R$)</label>
-                  <input 
-                    type="number" 
-                    value={laborCost}
-                    onChange={(e) => setLaborCost(parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-2 bg-blue-50 border border-blue-200 font-bold text-blue-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase text-blue-600">Descrição da Mão de Obra</label>
-                  <textarea 
-                    value={laborDescription}
-                    onChange={(e) => setLaborDescription(e.target.value)}
-                    rows={2}
-                    placeholder="Descreva o serviço de mão de obra..."
-                    className="w-full px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-400 uppercase">Endereço</label>
-                <input 
-                  type="text" 
-                  value={clientAddress}
-                  onChange={(e) => setClientAddress(e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </section>
-
-          <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <FileText size={16} /> Itens da Proposta
-              </h2>
-              <div className="flex gap-2">
-                <button 
-                  onClick={clearAllItems}
-                  className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 rounded-full hover:bg-red-100 font-bold border border-red-100 transition-colors"
-                >
-                  <Trash2 size={14} /> Limpar Lista
-                </button>
-                <button 
-                  onClick={addItem}
-                  className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 font-medium transition-colors"
-                >
-                  <Plus size={14} /> Adicionar Item
-                </button>
-              </div>
-            </div>
-            <div className="p-6 max-h-[400px] overflow-y-auto">
-              <div className="space-y-4">
-                <AnimatePresence initial={false}>
-                  {items.map((item) => (
-                    <motion.div 
-                      key={item.id}
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="p-4 bg-slate-50 rounded-xl border border-slate-200 relative group"
-                    >
-                      <button 
-                        onClick={() => removeItem(item.id)}
-                        className="absolute -top-2 -right-2 p-1.5 bg-white border border-red-100 text-red-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      <div className="grid grid-cols-12 gap-3">
-                        <div className="col-span-12 md:col-span-6 space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Descrição</label>
+                  <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="col-span-2 space-y-2">
+                        <label className="text-xs font-bold text-orange-600 uppercase flex items-center gap-2">
+                          <Plus size={14} /> Sua Logo (Upload ou URL)
+                        </label>
+                        <div className="flex flex-col md:flex-row gap-2">
+                          <label className="flex-1 cursor-pointer bg-orange-50 border-2 border-dashed border-orange-200 hover:border-orange-400 p-2 rounded-lg text-center transition-all">
+                            <span className="text-[10px] font-bold text-orange-600 uppercase">Selecionar Imagem</span>
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              onChange={handleLogoUpload}
+                              className="hidden" 
+                            />
+                          </label>
                           <input 
                             type="text" 
-                            value={item.description}
-                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm"
-                          />
-                        </div>
-                        <div className="col-span-6 md:col-span-2 space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Qtd</label>
-                          <input 
-                            type="number" 
-                            value={item.quantity}
-                            onChange={(e) => updateItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm"
-                          />
-                        </div>
-                        <div className="col-span-6 md:col-span-4 space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Custo Unit. (R$)</label>
-                          <input 
-                            type="number" 
-                            value={item.originalPrice}
-                            onChange={(e) => updateItem(item.id, 'originalPrice', parseFloat(e.target.value) || 0)}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm"
+                            value={logoUrl}
+                            onChange={(e) => setLogoUrl(e.target.value)}
+                            placeholder="Ou cole o link da imagem aqui"
+                            className="flex-[2] px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-xs"
                           />
                         </div>
                       </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-            </div>
-          </section>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Nome da Empresa</label>
+                        <input 
+                          type="text" 
+                          value={companyName}
+                          onChange={(e) => setCompanyName(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Subtítulo (Ex: Digital)</label>
+                        <input 
+                          type="text" 
+                          value={companyTagline}
+                          onChange={(e) => setCompanyTagline(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Telefone de Contato</label>
+                        <input 
+                          type="text" 
+                          value={companyPhone}
+                          onChange={(e) => setCompanyPhone(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">E-mail Comercial</label>
+                        <input 
+                          type="text" 
+                          value={companyEmail}
+                          onChange={(e) => setCompanyEmail(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Site / Website</label>
+                        <input 
+                          type="text" 
+                          value={companySite}
+                          onChange={(e) => setCompanySite(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                      <div className="col-span-2 md:col-span-1 space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">CNPJ / Identificação</label>
+                        <input 
+                          type="text" 
+                          value={companyCNPJ}
+                          onChange={(e) => setCompanyCNPJ(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                      <div className="col-span-2 md:col-span-1 space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Mensagem do Rodapé</label>
+                        <input 
+                          type="text" 
+                          value={footerMessage}
+                          onChange={(e) => setFooterMessage(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Termos & Condições */}
+                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                      <FileText size={16} /> Termos & Condições
+                    </h2>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Status do Documento</label>
+                        <input type="text" value={proposalStatus} onChange={(e) => setProposalStatus(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Resumo Cliente (Destaque)</label>
+                        <input type="text" value={clientTagline} onChange={(e) => setClientTagline(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Validade</label>
+                        <input type="text" value={validity} onChange={(e) => setValidity(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Prazo de Execução</label>
+                        <input type="text" value={executionTime} onChange={(e) => setExecutionTime(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Garantia</label>
+                        <input type="text" value={warranty} onChange={(e) => setWarranty(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Cargo na Assinatura</label>
+                        <input type="text" value={signatureRole} onChange={(e) => setSignatureRole(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Formas de Pagamento</label>
+                        <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </motion.div>
+            )}
+
+            {activeTab === 'cliente_itens' && (
+              <motion.div
+                key="cliente_itens"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.15 }}
+                className="space-y-6"
+              >
+                {/* Identificação do Cliente */}
+                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                      <User size={16} /> Identificação do Cliente
+                    </h2>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Nome / Empresa Reconhecida</label>
+                        <input 
+                          type="text" 
+                          value={clientName}
+                          onChange={(e) => setClientName(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Endereço de Instalação</label>
+                        <input 
+                          type="text" 
+                          value={clientAddress}
+                          onChange={(e) => setClientAddress(e.target.value)}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Itens da Proposta */}
+                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                      <FileText size={16} /> Itens da Proposta
+                    </h2>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={clearAllItems}
+                        className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 rounded-full hover:bg-red-100 font-bold border border-red-100 transition-colors"
+                      >
+                        <Trash2 size={14} /> Limpar Lista
+                      </button>
+                      <button 
+                        onClick={addItem}
+                        className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 font-medium transition-colors"
+                      >
+                        <Plus size={14} /> Adicionar Item
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-6 max-h-[400px] overflow-y-auto">
+                    <div className="space-y-4">
+                      <AnimatePresence initial={false}>
+                        {items.map((item) => (
+                          <motion.div 
+                            key={item.id}
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="p-4 bg-slate-50 rounded-xl border border-slate-200 relative group"
+                          >
+                            <button 
+                              onClick={() => removeItem(item.id)}
+                              className="absolute -top-2 -right-2 p-1.5 bg-white border border-red-100 text-red-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                            <div className="grid grid-cols-12 gap-3">
+                              <div className="col-span-12 md:col-span-6 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Descrição</label>
+                                <input 
+                                  type="text" 
+                                  value={item.description}
+                                  onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm font-semibold"
+                                />
+                              </div>
+                              <div className="col-span-6 md:col-span-2 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Qtd</label>
+                                <input 
+                                  type="number" 
+                                  value={item.quantity}
+                                  onChange={(e) => updateItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
+                                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm"
+                                />
+                              </div>
+                              <div className="col-span-6 md:col-span-4 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Custo Unit. (R$)</label>
+                                <input 
+                                  type="number" 
+                                  value={item.originalPrice}
+                                  onChange={(e) => updateItem(item.id, 'originalPrice', parseFloat(e.target.value) || 0)}
+                                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm font-mono"
+                                />
+                              </div>
+
+                              {/* Foto do Equipamento na Descrição */}
+                              <div className="col-span-12 pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                                {item.imageUrl ? (
+                                  <div className="flex items-center gap-2 bg-white/80 p-1 rounded-lg border border-slate-200 flex-1 min-w-0">
+                                    <div className="w-8 h-8 rounded-md bg-slate-100 border overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                      <img 
+                                        src={item.imageUrl} 
+                                        alt="Minisistema" 
+                                        className="w-full h-full object-cover" 
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    </div>
+                                    <span className="text-[9px] font-black tracking-wider text-slate-400 uppercase px-1">FOTO ANEXADA:</span>
+                                    <span className="text-[10px] font-bold text-slate-600 truncate flex-1 min-w-0">
+                                      {item.imageUrl.startsWith('data:') ? 'Imagem Local (Base64)' : item.imageUrl}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateItem(item.id, 'imageUrl', '')}
+                                      className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
+                                      title="Remover Foto"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
+                                    <label className="cursor-pointer bg-white border border-slate-200 hover:border-orange-300 px-2 py-1 rounded-md transition-all flex items-center justify-center gap-1.5 shadow-sm text-[9px] font-black text-slate-600 uppercase flex-shrink-0">
+                                      <Camera size={11} className="text-orange-500" />
+                                      <span>Carregar Foto</span>
+                                      <input 
+                                        type="file" 
+                                        accept="image/*" 
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) {
+                                            const reader = new FileReader();
+                                            reader.onload = async () => {
+                                              const rawBase64 = reader.result as string;
+                                              const compressed = await compressImage(rawBase64);
+                                              updateItem(item.id, 'imageUrl', compressed);
+                                            };
+                                            reader.readAsDataURL(file);
+                                          }
+                                        }}
+                                        className="hidden" 
+                                      />
+                                    </label>
+                                    <div className="flex-1 flex gap-1 items-center">
+                                      <span className="text-[9px] text-slate-300 uppercase font-black px-1">ou</span>
+                                      <input 
+                                        type="text" 
+                                        placeholder="Cole link/URL da imagem do equipamento..."
+                                        onBlur={(e) => {
+                                          const val = e.target.value.trim();
+                                          if (val) {
+                                            updateItem(item.id, 'imageUrl', val);
+                                          }
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            const val = (e.currentTarget as HTMLInputElement).value.trim();
+                                            if (val) {
+                                              updateItem(item.id, 'imageUrl', val);
+                                            }
+                                          }
+                                        }}
+                                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-md text-[10px] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-orange-500 font-semibold"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </section>
+              </motion.div>
+            )}
+
+            {activeTab === 'mao_obra' && (
+              <motion.div
+                key="mao_obra"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.15 }}
+                className="space-y-6"
+              >
+                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                      <Wrench size={16} /> Configuração de Mão de Obra & Instalação
+                    </h2>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase text-blue-600">Valor Mão de Obra (R$)</label>
+                        <input 
+                          type="number" 
+                          value={laborCost}
+                          onChange={(e) => setLaborCost(parseFloat(e.target.value) || 0)}
+                          className="w-full px-4 py-2 bg-blue-50/80 border border-blue-200 font-bold text-blue-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="space-y-1 font-semibold text-slate-700">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Prazo / Duração</label>
+                        <input 
+                          type="text" 
+                          value={laborDays}
+                          onChange={(e) => setLaborDays(e.target.value)}
+                          placeholder="Ex: 2 dias, 36 horas"
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-400 uppercase text-blue-600">Descrição Geral Serviços</label>
+                      <textarea 
+                        value={laborDescription}
+                        onChange={(e) => setLaborDescription(e.target.value)}
+                        rows={3}
+                        placeholder="Descreva o serviço de mão de obra..."
+                        className="w-full px-4 py-2 bg-blue-50/30 border border-blue-200 text-blue-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+
+              </motion.div>
+            )}
+
+
+          </AnimatePresence>
 
           <section className="bg-blue-600 rounded-2xl p-6 text-white shadow-xl shadow-blue-200 overflow-hidden relative">
             <TrendingUp className="absolute right-[-20px] bottom-[-20px] w-48 h-48 opacity-10" />
@@ -913,7 +1136,19 @@ export default function App() {
                 return (
                   <div key={item.id} className="grid grid-cols-12 gap-4 py-2 border-b border-slate-100 text-[10px] text-slate-600 items-center">
                     <div className="col-span-1 text-center font-mono opacity-40">{index + 1}</div>
-                    <div className="col-span-5 font-bold text-slate-800 uppercase leading-snug">{item.description}</div>
+                    <div className="col-span-5 flex items-center gap-2.5">
+                      {item.imageUrl && (
+                        <div className="w-10 h-10 rounded-md border border-slate-200 overflow-hidden bg-slate-50 flex-shrink-0 flex items-center justify-center">
+                          <img 
+                            src={item.imageUrl} 
+                            alt={item.description} 
+                            className="w-full h-full object-cover" 
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                      )}
+                      <div className="font-bold text-slate-800 uppercase leading-snug">{item.description}</div>
+                    </div>
                     <div className="col-span-1 text-center font-bold text-slate-400">{item.quantity}</div>
                     <div className="col-span-2 text-right font-mono font-medium">{formatCurrency(adjustedPrice)}</div>
                     <div className="col-span-3 text-right font-mono font-bold text-slate-900">
@@ -924,30 +1159,49 @@ export default function App() {
               })}
             </div>
 
-            <div className="flex justify-end mb-12">
-              <div className="w-80 space-y-2">
-                <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                  <span>Equipamentos</span>
-                  <span className="font-mono text-slate-600">{formatCurrency(totals.materialsAdjusted)}</span>
-                </div>
-                <div className="flex flex-col text-right text-[10px] uppercase font-black text-orange-600 tracking-wider bg-orange-50 px-3 py-2 rounded-lg border border-orange-100">
-                  <div className="flex justify-between items-center mb-1">
-                    <span>Mão de Obra e Instalação</span>
-                    <span className="font-mono text-lg">{formatCurrency(totals.laborCost)}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12 mb-12 items-start no-break">
+              {/* Left Column: Escopo & Mão de Obra */}
+              <div className="space-y-4 text-left">
+                {laborDays && (
+                  <div>
+                    <h4 className="text-[10px] uppercase font-black text-slate-400 tracking-[0.2em] mb-2 italic">Especificações de Mão de Obra</h4>
+                    
+                    <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg max-w-[200px]">
+                      <p className="text-[8px] font-bold text-slate-400 uppercase">Tempo Estimado</p>
+                      <p className="text-[10px] font-extrabold text-slate-700">{laborDays}</p>
+                    </div>
                   </div>
-                  <div className="text-[8px] opacity-60 normal-case font-medium">
-                    {laborDescription}
+                )}
+              </div>
+
+              {/* Right Column: Totais */}
+              <div className="space-y-2 flex flex-col items-end">
+                <div className="w-full max-w-xs space-y-2">
+                  <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    <span>Equipamentos</span>
+                    <span className="font-mono text-slate-600">{formatCurrency(totals.materialsAdjusted)}</span>
                   </div>
-                </div>
-                <div className="h-[3px] bg-slate-900 mt-4 mb-2"></div>
-                <div className="flex justify-between items-center pt-3">
-                  <span className="text-sm font-black uppercase tracking-widest italic text-slate-900">VALOR TOTAL DA PROPOSTA</span>
-                  <span className="text-3xl font-black text-orange-600 tracking-tighter drop-shadow-sm">
-                    {formatCurrency(totals.finalTotal)}
-                  </span>
+                  <div className="flex flex-col text-right text-[10px] uppercase font-black text-orange-600 tracking-wider bg-orange-50 px-3 py-2 rounded-lg border border-orange-100 w-full">
+                    <div className="flex justify-between items-center mb-1">
+                      <span>Mão de Obra e Instalação</span>
+                      <span className="font-mono text-base">{formatCurrency(totals.laborCost)}</span>
+                    </div>
+                    <div className="text-[8px] opacity-60 normal-case font-semibold text-right leading-relaxed">
+                      {laborDescription}
+                    </div>
+                  </div>
+                  <div className="h-[2px] bg-slate-900 mt-4 mb-2 w-full"></div>
+                  <div className="flex justify-between items-center pt-3 w-full">
+                    <span className="text-xs font-black uppercase tracking-widest italic text-slate-900">VALOR TOTAL DA PROPOSTA</span>
+                    <span className="text-2xl font-black text-orange-600 tracking-tighter drop-shadow-sm">
+                      {formatCurrency(totals.finalTotal)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
+
+
 
             <div className="mt-auto border-t pt-10 border-slate-100 mb-8 no-break">
               <div className="grid grid-cols-2 gap-12">
